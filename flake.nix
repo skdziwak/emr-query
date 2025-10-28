@@ -24,17 +24,36 @@
           pyyaml
         ]);
 
+        manpage = pkgs.stdenv.mkDerivation {
+          name = "emr-query-man";
+          src = ./.;
+          nativeBuildInputs = [ pkgs.pandoc ];
+          buildPhase = ''
+            pandoc README.md -s -t man -o emr-query.1
+          '';
+          installPhase = ''
+            mkdir -p $out/share/man/man1
+            cp emr-query.1 $out/share/man/man1/
+          '';
+        };
+
       in
       {
-        packages.default = pkgs.writeShellScriptBin "emr-query" ''
-          export PYSPARK_PYTHON="${pythonEnv}/bin/python"
-          export PYSPARK_DRIVER_PYTHON="${pythonEnv}/bin/python"
-          export JAVA_HOME="${pkgs.jdk17}"
-          export SPARK_HOME="${pythonEnv}/${pythonEnv.sitePackages}/pyspark"
-          export SPARK_EXTRA_CLASSPATH="${pkgs.hadoop}/share/hadoop/tools/lib/*"
+        packages.default = pkgs.symlinkJoin {
+          name = "emr-query";
+          paths = [
+            (pkgs.writeShellScriptBin "emr-query" ''
+              export PYSPARK_PYTHON="${pythonEnv}/bin/python"
+              export PYSPARK_DRIVER_PYTHON="${pythonEnv}/bin/python"
+              export JAVA_HOME="${pkgs.jdk17}"
+              export SPARK_HOME="${pythonEnv}/${pythonEnv.sitePackages}/pyspark"
+              export SPARK_EXTRA_CLASSPATH="${pkgs.hadoop}/share/hadoop/tools/lib/*"
 
-          exec ${pythonEnv}/bin/python ${./deploy.py} --runner-py ${./runner.py} "$@"
-        '';
+              exec ${pythonEnv}/bin/python ${./deploy.py} --runner-py ${./runner.py} "$@"
+            '')
+            manpage
+          ];
+        };
 
         devShells.default = pkgs.mkShell {
           buildInputs = [
