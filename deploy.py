@@ -37,9 +37,9 @@ TERMINAL_STATES = frozenset({"SUCCESS", "FAILED", "CANCELLED"})
 SUCCESS_STATE = "SUCCESS"
 
 DEFAULT_SPARK_SUBMIT_CONFIG = {
-    "executor_memory": "4G",
+    "executor_memory": "16G",
     "executor_cores": 4,
-    "driver_memory": "4G",
+    "driver_memory": "8G",
     "driver_cores": 2,
     "min_executors": 1,
     "max_executors": 100,
@@ -420,7 +420,6 @@ class EMRServerlessDeployer:
             f"--conf spark.driver.memory={cfg['driver_memory']} "
             f"--conf spark.driver.cores={cfg['driver_cores']} "
             f"--conf spark.dynamicAllocation.enabled=true "
-            f"--conf spark.dynamicAllocation.shuffleTracking.enabled=true "
             f"--conf spark.dynamicAllocation.minExecutors={cfg['min_executors']} "
             f"--conf spark.dynamicAllocation.maxExecutors={cfg['max_executors']} "
             f"--conf spark.dynamicAllocation.initialExecutors={cfg['initial_executors']} "
