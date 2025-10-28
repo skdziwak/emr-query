@@ -22,6 +22,9 @@ DEFAULT_SPARK_CONFIGS = {
     "spark.sql.adaptive.coalescePartitions.enabled": "true",
     "spark.hadoop.fs.s3a.aws.credentials.provider": "com.amazonaws.auth.DefaultAWSCredentialsProviderChain",
     "spark.sql.parquet.datetimeRebaseModeInWrite": "CORRECTED",
+    "spark.sql.parquet.datetimeRebaseModeInRead": "CORRECTED",
+    "spark.sql.legacy.parquet.int96RebaseModeInRead": "CORRECTED",
+    "spark.sql.legacy.parquet.int96RebaseModeInWrite": "CORRECTED",
 }
 SPARK_PACKAGES = (
     "org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262"
