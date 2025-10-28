@@ -19,7 +19,7 @@ A lightweight PySpark-powered tool for rapid iteration on complex Spark SQL quer
 - **Simple Configuration**: Define datasets, partitions, SQL views, and queries in a single YAML file
 - **Parameter Substitution**: Use `${PARAM_NAME}` placeholders in SQL queries and views (⚠️ simple string substitution - not SQL injection safe)
 - **Automatic Partition Handling**: Specify partition keys and values; paths are generated automatically using Hive format
-- **Spark Configuration Override**: Customize Spark settings per query via config file
+- **Direct Spark Configuration**: Use actual Spark option names for both submit-time and session-time configs with clear separation
 - **Real-time Monitoring**: Track job progress and get Spark UI access as soon as job starts running
 - **Automatic Result Download**: Results and logs are automatically downloaded to local directories
 - **Nix-based Reproducibility**: Fully reproducible development environment with all dependencies
@@ -134,11 +134,26 @@ query: |
   ORDER BY event_count DESC
   LIMIT ${LIMIT}
 
-# Optional: Override Spark Configuration
-sparkConfig:
-  executor_memory: "8G"
-  executor_cores: 8
-  max_executors: 50
+# Optional: Deploy-time Spark Configuration (passed to EMR Serverless via --conf)
+# If provided, completely replaces defaults (no merging)
+sparkSubmitConfig:
+  spark.executor.memory: "32G"
+  spark.executor.cores: "8"
+  spark.driver.memory: "16G"
+  spark.driver.cores: "4"
+  spark.dynamicAllocation.enabled: "true"
+  spark.dynamicAllocation.maxExecutors: "50"
+  spark.dynamicAllocation.minExecutors: "2"
+  spark.dynamicAllocation.initialExecutors: "10"
+  spark.sql.shuffle.partitions: "400"
+  spark.default.parallelism: "400"
+
+# Optional: Session-time Spark Configuration (applied during SparkSession creation)
+# If provided, completely replaces defaults (no merging)
+sparkSessionConfig:
+  spark.sql.adaptive.enabled: "true"
+  spark.sql.adaptive.coalescePartitions.enabled: "true"
+  spark.sql.parquet.datetimeRebaseModeInWrite: "CORRECTED"
 ```
 
 ### Example SQL View File (`create_metrics_view.sql`)
@@ -296,23 +311,53 @@ WHERE score >= 100
   AND category = 'electronics'
 ```
 
-## Default Spark Configuration
+## Spark Configuration
 
-The tool uses these default Spark settings (can be overridden via `sparkConfig` in your YAML):
+The tool separates Spark configuration into two categories:
 
-```python
-{
-    "executor_memory": "4G",
-    "executor_cores": 4,
-    "driver_memory": "4G",
-    "driver_cores": 2,
-    "min_executors": 1,
-    "max_executors": 100,
-    "initial_executors": 10,
-    "shuffle_partitions": 200,
-    "parallelism": 200,
-}
+### 1. Deploy-time Configuration (`sparkSubmitConfig`)
+
+These options are passed to EMR Serverless via `--conf` flags when submitting the job. They control resource allocation and execution parameters.
+
+**Default values** (applied when `sparkSubmitConfig` is not specified):
+
+```yaml
+sparkSubmitConfig:
+  spark.executor.memory: "16G"
+  spark.executor.cores: "4"
+  spark.driver.memory: "8G"
+  spark.driver.cores: "2"
+  spark.dynamicAllocation.enabled: "true"
+  spark.dynamicAllocation.minExecutors: "1"
+  spark.dynamicAllocation.maxExecutors: "100"
+  spark.dynamicAllocation.initialExecutors: "10"
+  spark.sql.shuffle.partitions: "200"
+  spark.default.parallelism: "200"
 ```
+
+### 2. Session-time Configuration (`sparkSessionConfig`)
+
+These options are applied when creating the SparkSession in runner.py. They control Spark behavior during execution.
+
+**Default values** (applied when `sparkSessionConfig` is not specified):
+
+```yaml
+sparkSessionConfig:
+  spark.sql.adaptive.enabled: "true"
+  spark.sql.adaptive.coalescePartitions.enabled: "true"
+  spark.hadoop.fs.s3a.aws.credentials.provider: "com.amazonaws.auth.DefaultAWSCredentialsProviderChain"
+  spark.sql.parquet.datetimeRebaseModeInWrite: "CORRECTED"
+  spark.sql.parquet.datetimeRebaseModeInRead: "CORRECTED"
+  spark.sql.parquet.int96RebaseModeInRead: "CORRECTED"
+  spark.sql.parquet.int96RebaseModeInWrite: "CORRECTED"
+```
+
+### Important Notes
+
+- **All configuration keys use direct Spark option names** (e.g., `spark.executor.memory` instead of custom property names)
+- **If you provide any configuration in your YAML, defaults are completely replaced** (no merging). This ensures predictable behavior.
+- You can specify only `sparkSubmitConfig`, only `sparkSessionConfig`, both, or neither
+- Any valid Spark configuration option can be used - no validation is enforced
 
 ## Output Structure
 

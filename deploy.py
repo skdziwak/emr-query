@@ -37,15 +37,16 @@ TERMINAL_STATES = frozenset({"SUCCESS", "FAILED", "CANCELLED"})
 SUCCESS_STATE = "SUCCESS"
 
 DEFAULT_SPARK_SUBMIT_CONFIG = {
-    "executor_memory": "16G",
-    "executor_cores": 4,
-    "driver_memory": "8G",
-    "driver_cores": 2,
-    "min_executors": 1,
-    "max_executors": 100,
-    "initial_executors": 10,
-    "shuffle_partitions": 200,
-    "parallelism": 200,
+    "spark.executor.memory": "16G",
+    "spark.executor.cores": "4",
+    "spark.driver.memory": "8G",
+    "spark.driver.cores": "2",
+    "spark.dynamicAllocation.enabled": "true",
+    "spark.dynamicAllocation.minExecutors": "1",
+    "spark.dynamicAllocation.maxExecutors": "100",
+    "spark.dynamicAllocation.initialExecutors": "10",
+    "spark.sql.shuffle.partitions": "200",
+    "spark.default.parallelism": "200",
 }
 
 
@@ -148,9 +149,14 @@ class EMRServerlessDeployer:
         )
         self.local_logs_dir = self.config.get("localLogsDir", DEFAULT_LOCAL_LOGS_DIR)
 
-        self.spark_config = {**DEFAULT_SPARK_SUBMIT_CONFIG}
-        if "sparkConfig" in self.config:
-            self.spark_config.update(self.config["sparkConfig"])
+        # Spark submit config: if user provides any config, use only their config (no merging with defaults)
+        if "sparkSubmitConfig" in self.config:
+            self.spark_submit_config = self.config["sparkSubmitConfig"]
+        else:
+            self.spark_submit_config = {**DEFAULT_SPARK_SUBMIT_CONFIG}
+
+        # Spark session config: passed to runner.py for SparkSession creation
+        self.spark_session_config = self.config.get("sparkSessionConfig", {})
 
         session_kwargs = {"region_name": self.aws_region}
         if self.aws_profile:
@@ -345,6 +351,10 @@ class EMRServerlessDeployer:
             "outputPrefix": self.output_prefix,
         }
 
+        # Pass Spark session config to runner.py if provided
+        if self.spark_session_config:
+            execution_config["sparkSessionConfig"] = self.spark_session_config
+
         view_files = self.config.get("views", [])
         if view_files:
             if not isinstance(view_files, list):
@@ -408,24 +418,15 @@ class EMRServerlessDeployer:
     def _build_spark_submit_parameters(self) -> str:
         """Build Spark configuration string for job submission.
 
-        Uses spark_config which merges default config with optional overrides from config file.
+        Uses direct Spark option names from spark_submit_config.
 
         Returns:
             Formatted Spark configuration string
         """
-        cfg = self.spark_config
-        return (
-            f"--conf spark.executor.memory={cfg['executor_memory']} "
-            f"--conf spark.executor.cores={cfg['executor_cores']} "
-            f"--conf spark.driver.memory={cfg['driver_memory']} "
-            f"--conf spark.driver.cores={cfg['driver_cores']} "
-            f"--conf spark.dynamicAllocation.enabled=true "
-            f"--conf spark.dynamicAllocation.minExecutors={cfg['min_executors']} "
-            f"--conf spark.dynamicAllocation.maxExecutors={cfg['max_executors']} "
-            f"--conf spark.dynamicAllocation.initialExecutors={cfg['initial_executors']} "
-            f"--conf spark.sql.shuffle.partitions={cfg['shuffle_partitions']} "
-            f"--conf spark.default.parallelism={cfg['parallelism']}"
-        )
+        conf_parts = []
+        for key, value in self.spark_submit_config.items():
+            conf_parts.append(f"--conf {key}={value}")
+        return " ".join(conf_parts)
 
     def submit_job(self, artifacts: Dict[str, str]) -> str:
         """Submit Spark job to EMR Serverless.

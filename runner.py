@@ -11,13 +11,13 @@ All logging output goes to stderr for EMR compatibility.
 import json
 import sys
 from itertools import product
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 
 DEFAULT_APP_NAME = "EMR Serverless Query Runner"
-DEFAULT_SPARK_CONFIGS = {
+DEFAULT_SPARK_SESSION_CONFIG = {
     "spark.sql.adaptive.enabled": "true",
     "spark.sql.adaptive.coalescePartitions.enabled": "true",
     "spark.hadoop.fs.s3a.aws.credentials.provider": "com.amazonaws.auth.DefaultAWSCredentialsProviderChain",
@@ -208,7 +208,10 @@ def load_dataset(spark: SparkSession, dataset_config: Dict[str, Any]) -> DataFra
     return result_df
 
 
-def create_spark_session(app_name: str = DEFAULT_APP_NAME) -> SparkSession:
+def create_spark_session(
+    app_name: str = DEFAULT_APP_NAME,
+    session_config: Optional[Dict[str, str]] = None
+) -> SparkSession:
     """Create and configure Spark session for EMR Serverless.
 
     Configures Spark with adaptive query execution, S3 access via hadoop-aws,
@@ -216,13 +219,18 @@ def create_spark_session(app_name: str = DEFAULT_APP_NAME) -> SparkSession:
 
     Args:
         app_name: Application name for the Spark session
+        session_config: Optional Spark configuration to apply. If provided,
+                       replaces default config entirely (no merging).
 
     Returns:
         Configured SparkSession instance
     """
     builder = SparkSession.builder.appName(app_name)
 
-    for key, value in DEFAULT_SPARK_CONFIGS.items():
+    # Use provided config if available, otherwise use defaults
+    config_to_use = session_config if session_config else DEFAULT_SPARK_SESSION_CONFIG
+
+    for key, value in config_to_use.items():
         builder = builder.config(key, value)
 
     builder = builder.config("spark.jars.packages", SPARK_PACKAGES)
@@ -395,16 +403,24 @@ def main() -> None:
     spark = None
     try:
         print("\nInitializing Spark session...", file=sys.stderr)
-        spark = create_spark_session()
-
+        # Load config first to get sparkSessionConfig (need minimal Spark for S3 loading)
         if config_path.startswith("s3://"):
             print("Loading execution config from S3...", file=sys.stderr)
-            config = load_config_from_s3(spark, config_path)
+            # Create minimal Spark session just for loading config from S3
+            temp_spark = create_spark_session()
+            config = load_config_from_s3(temp_spark, config_path)
+            temp_spark.stop()
         else:
             print("Loading execution config from local file...", file=sys.stderr)
             config = load_config_local(config_path)
 
         validate_config(config)
+
+        # Create final Spark session with custom config if provided
+        session_config = config.get("sparkSessionConfig")
+        if session_config:
+            print("Applying custom Spark session configuration...", file=sys.stderr)
+        spark = create_spark_session(session_config=session_config)
 
         result_df = execute_query(spark, config)
 
