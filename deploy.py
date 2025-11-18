@@ -811,9 +811,81 @@ def main() -> None:
         0: Success or job submitted without monitoring
         1: Job failed or deployment error
     """
+    epilog = """
+Example Configuration (YAML):
+
+  # AWS EMR Serverless Configuration
+  applicationId: 00fxxxxxxxxxx
+  awsRole: arn:aws:iam::123456789012:role/EMRServerlessRole
+  awsRegion: us-east-1
+  awsProfile: default
+
+  # S3 Paths
+  outputPrefix: s3://my-bucket/query-results/
+  logsPath: s3://my-bucket/spark-logs/
+  buildPath: s3://my-bucket/emr-artifacts/
+
+  # Local Directories (optional)
+  localOutputDir: ./output
+  localLogsDir: ./logs
+
+  # Datasets
+  datasets:
+    - name: events
+      path: s3://my-bucket/data/events/
+      partitions:
+        - key: date
+          values: ["2024-01-01", "2024-01-02"]
+        - key: region
+          values: [us-east, us-west]
+    - name: users
+      path: s3://my-bucket/data/users/
+
+  # Optional: SQL Views
+  views:
+    - path/to/create_metrics_view.sql
+
+  # Optional: Parameters for substitution
+  parameters:
+    START_DATE: "2024-01-01"
+    END_DATE: "2024-01-31"
+
+  # Main Query
+  query: |
+    SELECT user_id, COUNT(*) as event_count
+    FROM events
+    WHERE date >= '${START_DATE}' AND date <= '${END_DATE}'
+    GROUP BY user_id
+
+  # Optional: Spark Submit Config (deploy-time, passed via --conf)
+  sparkSubmitConfig:
+    spark.executor.memory: "16G"
+    spark.executor.cores: "4"
+    spark.dynamicAllocation.enabled: "true"
+
+  # Optional: Spark Session Config (session-time, runtime configuration)
+  sparkSessionConfig:
+    spark.sql.adaptive.enabled: "true"
+    spark.sql.adaptive.coalescePartitions.enabled: "true"
+
+Usage Examples:
+
+  # Run with config file
+  python deploy.py config.yaml
+
+  # Override query from command line
+  python deploy.py config.yaml --query "SELECT * FROM events LIMIT 10"
+
+  # Submit without monitoring
+  python deploy.py config.yaml --no-monitor
+
+  # Display results to stdout
+  python deploy.py config.yaml --display
+"""
     parser = argparse.ArgumentParser(
         description="Deploy and run Spark jobs on AWS EMR Serverless",
         formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=epilog,
     )
 
     parser.add_argument("config", help="Path to query configuration YAML file")
